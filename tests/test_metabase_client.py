@@ -1,6 +1,7 @@
 import pytest
+from unittest.mock import MagicMock, patch
 
-from metabase_client import MetabaseConfig, MetabaseError
+from metabase_client import MetabaseConfig, MetabaseError, MetabaseClient
 
 
 def test_config_requires_metabase_url(monkeypatch):
@@ -40,3 +41,95 @@ def test_config_resolves_session_mode_and_strips_trailing_slash(monkeypatch):
 
     assert config.uses_api_key is False
     assert config.url == "https://metabase.example.com"
+
+
+def make_config(monkeypatch, *, api_key=None, email=None, password=None):
+    monkeypatch.setenv("METABASE_URL", "https://metabase.example.com")
+    if api_key:
+        monkeypatch.setenv("METABASE_API_KEY", api_key)
+    else:
+        monkeypatch.delenv("METABASE_API_KEY", raising=False)
+    if email:
+        monkeypatch.setenv("METABASE_EMAIL", email)
+    else:
+        monkeypatch.delenv("METABASE_EMAIL", raising=False)
+    if password:
+        monkeypatch.setenv("METABASE_PASSWORD", password)
+    else:
+        monkeypatch.delenv("METABASE_PASSWORD", raising=False)
+    return MetabaseConfig()
+
+
+def make_response(status_code, json_body=None, text=""):
+    response = MagicMock()
+    response.status_code = status_code
+    response.json.return_value = json_body if json_body is not None else {}
+    response.text = text
+    return response
+
+
+@patch("metabase_client.requests.request")
+def test_api_key_mode_never_calls_session_endpoint(mock_request, monkeypatch):
+    config = make_config(monkeypatch, api_key="test-key")
+    client = MetabaseClient(config)
+    mock_request.return_value = make_response(200, {"ok": True})
+
+    with patch("metabase_client.requests.post") as mock_post:
+        result = client._request("GET", "/api/database")
+
+    mock_post.assert_not_called()
+    assert result == {"ok": True}
+    assert mock_request.call_args.kwargs["headers"] == {"x-api-key": "test-key"}
+
+
+@patch("metabase_client.requests.post")
+@patch("metabase_client.requests.request")
+def test_session_mode_authenticates_lazily_then_reuses_token(mock_request, mock_post, monkeypatch):
+    config = make_config(monkeypatch, email="a@b.com", password="secret")
+    client = MetabaseClient(config)
+    mock_post.return_value = make_response(200, {"id": "session-token-1"})
+    mock_request.return_value = make_response(200, {"ok": True})
+
+    client._request("GET", "/api/database")
+    client._request("GET", "/api/collection")
+
+    assert mock_post.call_count == 1
+    for call in mock_request.call_args_list:
+        assert call.kwargs["headers"] == {"X-Metabase-Session": "session-token-1"}
+
+
+@patch("metabase_client.requests.post")
+@patch("metabase_client.requests.request")
+def test_401_triggers_one_reauth_and_retry(mock_request, mock_post, monkeypatch):
+    config = make_config(monkeypatch, email="a@b.com", password="secret")
+    client = MetabaseClient(config)
+    mock_post.side_effect = [make_response(200, {"id": "token-1"}), make_response(200, {"id": "token-2"})]
+    mock_request.side_effect = [make_response(401, text="expired"), make_response(200, {"ok": True})]
+
+    result = client._request("GET", "/api/database")
+
+    assert result == {"ok": True}
+    assert mock_post.call_count == 2
+    assert mock_request.call_count == 2
+
+
+@patch("metabase_client.requests.post")
+@patch("metabase_client.requests.request")
+def test_second_401_after_retry_raises(mock_request, mock_post, monkeypatch):
+    config = make_config(monkeypatch, email="a@b.com", password="secret")
+    client = MetabaseClient(config)
+    mock_post.side_effect = [make_response(200, {"id": "token-1"}), make_response(200, {"id": "token-2"})]
+    mock_request.side_effect = [make_response(401, text="expired"), make_response(401, text="still expired")]
+
+    with pytest.raises(MetabaseError, match="401"):
+        client._request("GET", "/api/database")
+
+
+@patch("metabase_client.requests.request")
+def test_error_response_raises_with_context(mock_request, monkeypatch):
+    config = make_config(monkeypatch, api_key="test-key")
+    client = MetabaseClient(config)
+    mock_request.return_value = make_response(500, text="internal error")
+
+    with pytest.raises(MetabaseError, match=r"GET /api/database"):
+        client._request("GET", "/api/database")
