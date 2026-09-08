@@ -171,3 +171,77 @@ def test_validate_rejects_select_into():
 def test_validate_rejects_select_into_outfile():
     with pytest.raises(MetabaseError, match="INTO"):
         validate_readonly_sql("SELECT * FROM t INTO OUTFILE '/tmp/out.csv'")
+
+
+@patch.object(MetabaseClient, "_request")
+def test_search_sends_query_param(mock_request, monkeypatch):
+    client = MetabaseClient(make_config(monkeypatch, api_key="test-key"))
+    mock_request.return_value = {"data": []}
+
+    result = client.search("premium")
+
+    mock_request.assert_called_once_with("GET", "/api/search", params={"q": "premium"})
+    assert result == {"data": []}
+
+
+@patch.object(MetabaseClient, "_request")
+def test_search_with_models_filter(mock_request, monkeypatch):
+    client = MetabaseClient(make_config(monkeypatch, api_key="test-key"))
+    mock_request.return_value = {"data": []}
+
+    client.search("premium", models=["dashboard", "card"])
+
+    mock_request.assert_called_once_with(
+        "GET", "/api/search", params={"q": "premium", "models": ["dashboard", "card"]}
+    )
+
+
+@patch.object(MetabaseClient, "_request")
+def test_list_databases(mock_request, monkeypatch):
+    client = MetabaseClient(make_config(monkeypatch, api_key="test-key"))
+    mock_request.return_value = {"data": [{"id": 1}]}
+
+    result = client.list_databases()
+
+    mock_request.assert_called_once_with("GET", "/api/database")
+    assert result == {"data": [{"id": 1}]}
+
+
+@patch.object(MetabaseClient, "_request")
+def test_list_tables(mock_request, monkeypatch):
+    client = MetabaseClient(make_config(monkeypatch, api_key="test-key"))
+    mock_request.return_value = {"tables": []}
+
+    client.list_tables(7)
+
+    mock_request.assert_called_once_with("GET", "/api/database/7/metadata")
+
+
+@patch.object(MetabaseClient, "_request")
+def test_list_collections(mock_request, monkeypatch):
+    client = MetabaseClient(make_config(monkeypatch, api_key="test-key"))
+    mock_request.return_value = []
+
+    client.list_collections()
+
+    mock_request.assert_called_once_with("GET", "/api/collection")
+
+
+@patch.object(MetabaseClient, "_request")
+def test_get_dashboard(mock_request, monkeypatch):
+    client = MetabaseClient(make_config(monkeypatch, api_key="test-key"))
+    mock_request.return_value = {"id": 3}
+
+    client.get_dashboard(3)
+
+    mock_request.assert_called_once_with("GET", "/api/dashboard/3")
+
+
+@patch.object(MetabaseClient, "_request")
+def test_get_card(mock_request, monkeypatch):
+    client = MetabaseClient(make_config(monkeypatch, api_key="test-key"))
+    mock_request.return_value = {"id": 9}
+
+    client.get_card(9)
+
+    mock_request.assert_called_once_with("GET", "/api/card/9")

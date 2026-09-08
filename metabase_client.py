@@ -90,6 +90,27 @@ class MetabaseClient:
 
         return response.json()
 
+    def search(self, query: str, models: list[str] | None = None) -> Any:
+        params: dict[str, Any] = {"q": query}
+        if models:
+            params["models"] = models
+        return self._request("GET", "/api/search", params=params)
+
+    def list_databases(self) -> Any:
+        return self._request("GET", "/api/database")
+
+    def list_tables(self, database_id: int) -> Any:
+        return self._request("GET", f"/api/database/{database_id}/metadata")
+
+    def list_collections(self) -> Any:
+        return self._request("GET", "/api/collection")
+
+    def get_dashboard(self, dashboard_id: int) -> Any:
+        return self._request("GET", f"/api/dashboard/{dashboard_id}")
+
+    def get_card(self, card_id: int) -> Any:
+        return self._request("GET", f"/api/card/{card_id}")
+
 
 WRITE_KEYWORDS = (
     "INSERT", "UPDATE", "DELETE", "DROP", "ALTER",
