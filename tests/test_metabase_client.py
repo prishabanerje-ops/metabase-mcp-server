@@ -245,3 +245,69 @@ def test_get_card(mock_request, monkeypatch):
     client.get_card(9)
 
     mock_request.assert_called_once_with("GET", "/api/card/9")
+
+
+@patch.object(MetabaseClient, "_request")
+def test_run_card_posts_query_with_parameters(mock_request, monkeypatch):
+    client = MetabaseClient(make_config(monkeypatch, api_key="test-key"))
+    mock_request.return_value = {"data": {"rows": []}}
+
+    client.run_card(12, parameters=[{"id": "p1", "value": "x"}])
+
+    mock_request.assert_called_once_with(
+        "POST", "/api/card/12/query", json={"parameters": [{"id": "p1", "value": "x"}]}
+    )
+
+
+@patch.object(MetabaseClient, "_request")
+def test_run_card_defaults_to_empty_parameters(mock_request, monkeypatch):
+    client = MetabaseClient(make_config(monkeypatch, api_key="test-key"))
+    mock_request.return_value = {"data": {"rows": []}}
+
+    client.run_card(12)
+
+    mock_request.assert_called_once_with("POST", "/api/card/12/query", json={"parameters": []})
+
+
+@patch.object(MetabaseClient, "_request")
+def test_run_sql_sends_native_query(mock_request, monkeypatch):
+    client = MetabaseClient(make_config(monkeypatch, api_key="test-key"))
+    mock_request.return_value = {"data": {"rows": []}}
+
+    client.run_sql(5, "SELECT * FROM policies LIMIT 10")
+
+    mock_request.assert_called_once_with(
+        "POST",
+        "/api/dataset",
+        json={"type": "native", "native": {"query": "SELECT * FROM policies LIMIT 10"}, "database": 5},
+    )
+
+
+@patch.object(MetabaseClient, "_request")
+def test_run_sql_rejects_delete_without_http_call(mock_request, monkeypatch):
+    client = MetabaseClient(make_config(monkeypatch, api_key="test-key"))
+
+    with pytest.raises(MetabaseError, match="DELETE"):
+        client.run_sql(5, "DELETE FROM policies")
+
+    mock_request.assert_not_called()
+
+
+@patch.object(MetabaseClient, "_request")
+def test_run_sql_rejects_stacked_statements(mock_request, monkeypatch):
+    client = MetabaseClient(make_config(monkeypatch, api_key="test-key"))
+
+    with pytest.raises(MetabaseError, match="stacked"):
+        client.run_sql(5, "SELECT 1; DROP TABLE policies")
+
+    mock_request.assert_not_called()
+
+
+@patch.object(MetabaseClient, "_request")
+def test_run_sql_accepts_cte(mock_request, monkeypatch):
+    client = MetabaseClient(make_config(monkeypatch, api_key="test-key"))
+    mock_request.return_value = {"data": {"rows": []}}
+
+    client.run_sql(5, "WITH recent AS (SELECT * FROM policies) SELECT * FROM recent")
+
+    mock_request.assert_called_once()

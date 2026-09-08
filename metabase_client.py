@@ -111,6 +111,19 @@ class MetabaseClient:
     def get_card(self, card_id: int) -> Any:
         return self._request("GET", f"/api/card/{card_id}")
 
+    def run_card(self, card_id: int, parameters: list[dict[str, Any]] | None = None) -> Any:
+        body = {"parameters": parameters or []}
+        return self._request("POST", f"/api/card/{card_id}/query", json=body)
+
+    def run_sql(self, database_id: int, sql: str) -> Any:
+        validate_readonly_sql(sql)
+        body = {
+            "type": "native",
+            "native": {"query": sql},
+            "database": database_id,
+        }
+        return self._request("POST", "/api/dataset", json=body)
+
 
 WRITE_KEYWORDS = (
     "INSERT", "UPDATE", "DELETE", "DROP", "ALTER",
