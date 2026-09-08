@@ -93,7 +93,7 @@ class MetabaseClient:
 
 WRITE_KEYWORDS = (
     "INSERT", "UPDATE", "DELETE", "DROP", "ALTER",
-    "CREATE", "TRUNCATE", "GRANT", "REVOKE",
+    "CREATE", "TRUNCATE", "GRANT", "REVOKE", "INTO",
 )
 
 

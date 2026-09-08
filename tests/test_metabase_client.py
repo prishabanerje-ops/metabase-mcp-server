@@ -161,3 +161,13 @@ def test_validate_rejects_stacked_statements():
 def test_validate_rejects_write_keyword_inside_cte():
     with pytest.raises(MetabaseError, match="GRANT"):
         validate_readonly_sql("WITH x AS (SELECT 1) SELECT * FROM x WHERE 1=1 GRANT ALL")
+
+
+def test_validate_rejects_select_into():
+    with pytest.raises(MetabaseError, match="INTO"):
+        validate_readonly_sql("SELECT * INTO evil_table FROM policies")
+
+
+def test_validate_rejects_select_into_outfile():
+    with pytest.raises(MetabaseError, match="INTO"):
+        validate_readonly_sql("SELECT * FROM t INTO OUTFILE '/tmp/out.csv'")
