@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import MagicMock, patch
 
-from metabase_client import MetabaseConfig, MetabaseError, MetabaseClient
+from metabase_client import MetabaseConfig, MetabaseError, MetabaseClient, validate_readonly_sql
 
 
 def test_config_requires_metabase_url(monkeypatch):
@@ -133,3 +133,31 @@ def test_error_response_raises_with_context(mock_request, monkeypatch):
 
     with pytest.raises(MetabaseError, match=r"GET /api/database"):
         client._request("GET", "/api/database")
+
+
+def test_validate_accepts_select():
+    validate_readonly_sql("SELECT * FROM policies LIMIT 10")  # must not raise
+
+
+def test_validate_accepts_cte_with_select():
+    validate_readonly_sql("WITH recent AS (SELECT * FROM policies) SELECT * FROM recent")  # must not raise
+
+
+def test_validate_rejects_empty_sql():
+    with pytest.raises(MetabaseError, match="empty"):
+        validate_readonly_sql("   ")
+
+
+def test_validate_rejects_delete():
+    with pytest.raises(MetabaseError, match="DELETE"):
+        validate_readonly_sql("DELETE FROM policies")
+
+
+def test_validate_rejects_stacked_statements():
+    with pytest.raises(MetabaseError, match="stacked"):
+        validate_readonly_sql("SELECT 1; DROP TABLE policies")
+
+
+def test_validate_rejects_write_keyword_inside_cte():
+    with pytest.raises(MetabaseError, match="GRANT"):
+        validate_readonly_sql("WITH x AS (SELECT 1) SELECT * FROM x WHERE 1=1 GRANT ALL")

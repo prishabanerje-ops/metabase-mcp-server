@@ -1,6 +1,7 @@
 """Metabase REST API client with read-only SQL enforcement."""
 
 import os
+import re
 from typing import Any
 
 import requests
@@ -88,3 +89,47 @@ class MetabaseClient:
             )
 
         return response.json()
+
+
+WRITE_KEYWORDS = (
+    "INSERT", "UPDATE", "DELETE", "DROP", "ALTER",
+    "CREATE", "TRUNCATE", "GRANT", "REVOKE",
+)
+
+
+def validate_readonly_sql(sql: str) -> None:
+    """
+    Raise MetabaseError unless sql is a single read-only SELECT/CTE statement.
+
+    This is a heuristic, not a full SQL parser: it can be fooled by a write
+    keyword appearing inside a quoted string literal. It is a defense-in-depth
+    layer on top of the Metabase account's own DB permissions, not a
+    substitute for least-privilege access.
+    """
+    stripped = sql.strip()
+    if not stripped:
+        raise MetabaseError("Cannot run an empty SQL query.")
+
+    first_word_match = re.match(r"[A-Za-z]+", stripped)
+    first_word = first_word_match.group(0).upper() if first_word_match else ""
+
+    if first_word not in ("SELECT", "WITH"):
+        raise MetabaseError(
+            f"Refusing to run non-SELECT statement (starts with '{first_word}'). "
+            f"Only SELECT and WITH...SELECT statements are allowed. SQL was: {sql!r}"
+        )
+
+    body = stripped.rstrip(";").strip()
+    if ";" in body:
+        raise MetabaseError(
+            f"Refusing to run stacked SQL statements (multiple statements "
+            f"separated by ';'). SQL was: {sql!r}"
+        )
+
+    upper_body = body.upper()
+    for keyword in WRITE_KEYWORDS:
+        if re.search(rf"\b{keyword}\b", upper_body):
+            raise MetabaseError(
+                f"Refusing to run SQL containing write keyword '{keyword}'. "
+                f"SQL was: {sql!r}"
+            )
