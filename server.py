@@ -60,7 +60,7 @@ def get_dashboard(dashboard_id: int) -> Any:
     Get the full definition of a dashboard, including its cards.
 
     Args:
-        dashboard_id: The Metabase dashboard ID, from search() or list_collections().
+        dashboard_id: The Metabase dashboard ID, from search().
     """
     return get_client().get_dashboard(dashboard_id)
 

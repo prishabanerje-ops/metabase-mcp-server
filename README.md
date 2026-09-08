@@ -43,13 +43,15 @@ pytest
 
 ### Register with Claude Code
 
+Once `.env` has your real Metabase URL and credentials (see Install above), register the server pointing at this project's own venv interpreter — not the system `python3`, which won't have the dependencies installed:
+
 ```bash
 claude mcp add metabase-own --scope local \
-  -e METABASE_URL=https://metabase.policybazaar.ae/ \
-  -e METABASE_EMAIL='your.email@policybazaar.com' \
-  -e METABASE_PASSWORD='your-password' \
-  -- python3 "$(pwd)/server.py"
+  -- "/Users/aakashsrivastava/Documents/PolicyBazaar Claude/.claude/mcp/metabase-mcp/venv/bin/python" \
+     "/Users/aakashsrivastava/Documents/PolicyBazaar Claude/.claude/mcp/metabase-mcp/server.py"
 ```
+
+Credentials are read from this project's `.env` file at runtime — nothing is passed via `-e` flags, so no credential ends up stored in Claude Code's own config file.
 
 Named `metabase-own` to avoid colliding with the `metabase` connector already
 installed from the third-party `@jerichosequitin/metabase-mcp` package.
@@ -57,9 +59,20 @@ installed from the third-party `@jerichosequitin/metabase-mcp` package.
 ## Safety
 
 `run_sql` only accepts SELECT / WITH...SELECT statements — INSERT, UPDATE,
-DELETE, DROP, ALTER, CREATE, TRUNCATE, GRANT, REVOKE, and stacked statements
-are all rejected in code before any request reaches Metabase. There is no
-env flag to disable this.
+DELETE, DROP, ALTER, CREATE, TRUNCATE, GRANT, REVOKE, INTO, and stacked
+statements are all rejected in code before any request reaches Metabase.
+There is no env flag to disable this.
+
+This is a keyword heuristic, not a full SQL sandbox. Two known limitations:
+- A `SELECT` that calls a function or stored procedure which itself performs
+  a write (e.g. `SELECT delete_all_policies()`, `SELECT lo_export(...)`) is
+  not detectable by keyword matching and will pass through. The Metabase
+  account used by this server should still hold read-only database
+  permissions — this guard is defense-in-depth, not a substitute for that.
+- A write keyword appearing inside a quoted string literal or SQL comment
+  (e.g. `WHERE status = 'DELETE_REQUESTED'`) can cause a false rejection of
+  an otherwise-safe query. This is an accepted trade-off of a text-based
+  heuristic.
 
 ## License
 

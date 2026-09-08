@@ -1,7 +1,13 @@
 import pytest
 from unittest.mock import MagicMock, patch
 
-from metabase_client import MetabaseConfig, MetabaseError, MetabaseClient, validate_readonly_sql
+from metabase_client import (
+    MetabaseConfig,
+    MetabaseError,
+    MetabaseClient,
+    validate_readonly_sql,
+    WRITE_KEYWORDS,
+)
 
 
 def test_config_requires_metabase_url(monkeypatch):
@@ -171,6 +177,49 @@ def test_validate_rejects_select_into():
 def test_validate_rejects_select_into_outfile():
     with pytest.raises(MetabaseError, match="INTO"):
         validate_readonly_sql("SELECT * FROM t INTO OUTFILE '/tmp/out.csv'")
+
+
+def test_validate_accepts_select_with_leading_line_comment():
+    validate_readonly_sql("-- monthly leads report\nSELECT * FROM leads")  # must not raise
+
+
+def test_validate_accepts_select_with_leading_block_comment():
+    validate_readonly_sql("/* report */ SELECT * FROM leads")  # must not raise
+
+
+def test_validate_rejects_delete_after_leading_comment():
+    with pytest.raises(MetabaseError, match="DELETE"):
+        validate_readonly_sql("-- x\nDELETE FROM t")
+
+
+def test_validate_write_keywords_tuple_is_exactly_specified():
+    assert WRITE_KEYWORDS == (
+        "INSERT", "UPDATE", "DELETE", "DROP", "ALTER",
+        "CREATE", "TRUNCATE", "GRANT", "REVOKE", "INTO",
+    )
+
+
+def test_validate_rejects_lowercase_write_keyword():
+    with pytest.raises(MetabaseError, match="DELETE"):
+        validate_readonly_sql("delete from policies")
+
+
+def test_validate_rejects_mixed_case_write_keyword():
+    with pytest.raises(MetabaseError, match="DELETE"):
+        validate_readonly_sql("DeLeTe FROM policies")
+
+
+@patch("metabase_client.requests.request")
+def test_non_json_response_raises_metabase_error_with_context(mock_request, monkeypatch):
+    client = MetabaseClient(make_config(monkeypatch, api_key="test-key"))
+    response = MagicMock()
+    response.status_code = 200
+    response.json.side_effect = ValueError("Expecting value: line 1 column 1 (char 0)")
+    response.text = "<html>login page</html>"
+    mock_request.return_value = response
+
+    with pytest.raises(MetabaseError, match="non-JSON"):
+        client._request("GET", "/api/database")
 
 
 @patch.object(MetabaseClient, "_request")
